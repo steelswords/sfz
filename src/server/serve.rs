@@ -28,6 +28,7 @@ use mime_guess::mime;
 use percent_encoding::percent_decode;
 use qstring::QString;
 use serde::Serialize;
+use multipart::server::{Multipart};
 
 use crate::cli::Args;
 use crate::extensions::{MimeExt, PathExt, SystemTimeExt};
@@ -428,6 +429,8 @@ impl InnerService {
                     .unwrap(),
                 );
             },
+            Action::UploadFile => {
+            },
             _ => { println!("Unsupported action called") }
         }
 
@@ -484,6 +487,11 @@ impl InnerService {
                 Action::DownloadZip => mime::APPLICATION_OCTET_STREAM,
                 Action::UploadFile => mime::TEXT_PLAIN_UTF_8,
             })
+    }
+    
+    fn get_files_from_request(request: &mut Request) -> Option<(String, String)> {
+        let multipart_wrapper = Multipart::from_request(request).expect("Could not read multipart data");
+        None
     }
 }
 
