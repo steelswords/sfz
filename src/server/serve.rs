@@ -83,6 +83,7 @@ enum Action {
     DownloadZip,
     ListDir,
     DownloadFile,
+    UploadFile,
 }
 
 struct InnerService {
@@ -308,7 +309,11 @@ impl InnerService {
                             } else {
                                 bail!("error: invalid action");
                             }
-                        }
+                        },
+                        "upload" => {
+                            println!("Upload requested! Now what?");
+                            Action::UploadFile
+                        },
                         _ => bail!("error: invalid action"),
                     },
                     None => default_action,
@@ -422,7 +427,8 @@ impl InnerService {
                     ))
                     .unwrap(),
                 );
-            }
+            },
+            _ => { println!("Unsupported action called") }
         }
 
         let accept_encoding = req.headers().get(hyper::header::ACCEPT_ENCODING);
@@ -476,6 +482,7 @@ impl InnerService {
                 Action::ListDir => mime::TEXT_HTML_UTF_8,
                 Action::DownloadFile => mime::TEXT_PLAIN_UTF_8,
                 Action::DownloadZip => mime::APPLICATION_OCTET_STREAM,
+                Action::UploadFile => mime::TEXT_PLAIN_UTF_8,
             })
     }
 }
