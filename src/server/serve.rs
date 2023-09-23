@@ -6,6 +6,8 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use regex::Regex;
+
 use std::convert::{AsRef, Infallible};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -91,6 +93,11 @@ struct InnerService {
     args: Args,
     gitignore: Gitignore,
 }
+/*
+impl HttpRequest for Request {
+    Body: hyper:
+}
+*/
 
 impl InnerService {
     pub fn new(args: Args) -> Self {
@@ -98,9 +105,9 @@ impl InnerService {
         Self { args, gitignore }
     }
 
-    pub async fn call(self: Arc<Self>, req: Request) -> Result<Response, hyper::Error> {
+    pub async fn call(self: Arc<Self>, mut req: Request) -> Result<Response, hyper::Error> {
         let res = self
-            .handle_request(&req)
+            .handle_request(&mut req)
             .await
             .unwrap_or_else(|_| res::internal_server_error(Response::default()));
         // Logging
@@ -281,7 +288,7 @@ impl InnerService {
     }
 
     /// Request handler for `MyService`.
-    async fn handle_request(&self, req: &Request) -> BoxResult<Response> {
+    async fn handle_request(&self, req: &mut Request) -> BoxResult<Response> {
         // Construct response.
         let mut res = Response::default();
         res.headers_mut()
@@ -430,8 +437,9 @@ impl InnerService {
                 );
             },
             Action::UploadFile => {
-            },
-            _ => { println!("Unsupported action called") }
+                println!("Request to upload file");
+                _ = InnerService::get_files_from_request(req);
+            }
         }
 
         let accept_encoding = req.headers().get(hyper::header::ACCEPT_ENCODING);
@@ -489,10 +497,55 @@ impl InnerService {
             })
     }
     
-    fn get_files_from_request(request: &mut Request) -> Option<(String, String)> {
-        let multipart_wrapper = Multipart::from_request(request).expect("Could not read multipart data");
+    async fn get_files_from_request(request: &mut Request) -> Option<Vec<(String, String)>> {
+        let content_type_header = request.headers().get("Content-Type").unwrap();
+        if let Some(boundary) = extract_boundary(&content_type_header.to_str().unwrap()) {
+            let body_bytes = hyper::body::to_bytes(request.body_mut()).await.unwrap();
+            let mut multipart = Multipart::with_body(std::io::Cursor::new(body_bytes), boundary);
+
+            //let mut filenames_and_contents = Vec::<(String, String)>::new();
+            while let Some(multipart_field) = match multipart.read_entry() {
+                Ok(entry) => entry,
+                Err(_) => {
+                    eprintln!("Could not read multipart field");
+                    None
+                }
+            } {
+                if let Some(filename) = multipart_field.headers.filename {
+                    println!("-> Uploading file {}", filename);
+                }
+                else {
+                    println!("-> Didn't get filename");
+                }
+            }
+            /*
+            let body_string = String::from_utf8(
+                    hyper::body::to_bytes(request.body_mut())
+                    .await
+                    .expect("Could not read request body")
+                    .to_vec()
+                )
+                .expect("Could not convert request body into String");
+            let multipart_wrapper = Multipart::with_body(body_string, boundary);
+            */
+        }
+        println!("Done parsing request");
         None
     }
+}
+
+fn extract_boundary(content_type: &str) -> Option<String> {
+    // Define a regular expression pattern to match the boundary string
+    let re = Regex::new(r#"boundary=([-_a-zA-Z0-9]+)"#).unwrap();
+
+    // Use the regular expression to capture the boundary string
+    if let Some(captures) = re.captures(content_type) {
+        if let Some(boundary) = captures.get(1) {
+            return Some(boundary.as_str().to_string());
+        }
+    }
+
+    None
 }
 
 #[cfg(test)]
