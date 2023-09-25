@@ -6,17 +6,20 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 
+use bytes::Buf;
 use regex::Regex;
 
 use std::convert::{AsRef, Infallible};
-use std::io;
 use std::path::{Path, PathBuf};
 use std::str::Utf8Error;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::fs::File;
+use tokio::io::{self, AsyncWriteExt};
+use hyper::body::{Bytes, to_bytes};
 
 use chrono::Local;
-use futures::TryStreamExt as _;
+use futures::{TryStreamExt as _, StreamExt};
 use headers::{
     AcceptRanges, AccessControlAllowHeaders, AccessControlAllowOrigin, CacheControl, ContentLength,
     ContentType, ETag, HeaderMapExt, LastModified, Range, Server,
@@ -438,7 +441,7 @@ impl InnerService {
             },
             Action::UploadFile => {
                 println!("Request to upload file");
-                _ = InnerService::get_files_from_request(req);
+                _ = InnerService::get_files_from_request(req).await;
             }
         }
 
@@ -498,6 +501,8 @@ impl InnerService {
     }
     
     async fn get_files_from_request(request: &mut Request) -> Option<Vec<(String, String)>> {
+        use hyper::body::HttpBody;
+        println!("request: {:?}", &request);
         let content_type_header = request.headers().get("Content-Type").unwrap();
         if let Some(boundary) = extract_boundary(&content_type_header.to_str().unwrap()) {
             let body_bytes = hyper::body::to_bytes(request.body_mut()).await.unwrap();
@@ -513,6 +518,18 @@ impl InnerService {
             } {
                 if let Some(filename) = multipart_field.headers.filename {
                     println!("-> Uploading file {}", filename);
+                    //let mut file = File::create(filename).await.unwrap();
+                    let body_bytes_0 = request.data()
+                        .await
+                        .unwrap()
+                        .unwrap();
+                    let body_bytes = body_bytes_0
+                        .iter()
+                        .copied()
+                        .collect();
+
+                    println!("Contents of file: {:?}", body_bytes_0);
+                    println!("Contents of file: {}", String::from_utf8(body_bytes).unwrap().as_str());
                 }
                 else {
                     println!("-> Didn't get filename");
